@@ -1,0 +1,6 @@
+name: astrbot_plugin_ansisky
+display_name: AnsiSky 天气
+desc: 生成 ASCII 艺术风格天气动画 GIF，支持雨/雪/云/雷暴/雾等天气效果
+version: v1.0.0
+author: bdbd2yy
+repo: ""

@@ -1,0 +1,20 @@
+{
+  "default_city": {
+    "type": "string",
+    "description": "默认城市名称（英文，如 Beijing, Tokyo, London）",
+    "default": "Beijing",
+    "hint": "用户可在命令中覆盖: /weather Shanghai"
+  },
+  "gif_frame_count": {
+    "type": "int",
+    "description": "GIF 动画帧数",
+    "default": 12,
+    "hint": "帧数越多动画越流畅，但文件越大"
+  },
+  "gif_frame_duration_ms": {
+    "type": "int",
+    "description": "每帧持续时间（毫秒）",
+    "default": 150,
+    "hint": "数值越小动画越快"
+  }
+}
