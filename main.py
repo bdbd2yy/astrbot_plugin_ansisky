@@ -17,6 +17,7 @@ from .core.gif_composer import save_gif
 class AnsiSkyPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig = None):
         super().__init__(context, config)
+        self.config = config or {}
         self._session: aiohttp.ClientSession | None = None
 
     async def initialize(self):

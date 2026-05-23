@@ -33,4 +33,10 @@ Plan: `/home/bdbd/.claude/plans/witty-launching-matsumoto.md`
 
 ## Development Log
 
-<!-- Add issues encountered and solutions here as you go -->
+### 2026-05-23 — Network and config fixes
+
+**1. Nominatim blocked in China** — `nominatim.openstreetmap.org` is inaccessible from China. Replaced with Open-Meteo's free geocoding API (`geocoding-api.open-meteo.com/v1/search`). Same provider as the weather data, no API key required. Response field names differ: `lat`/`lon` → `latitude`/`longitude`, and results are wrapped in `{"results": [...]}` instead of a flat array.
+
+**2. Open-Meteo 400 Bad Request** — `moon_phase` is not a valid `daily` parameter in Open-Meteo's forecast API. Requesting it causes HTTP 400. The API only supports `sunrise` and `sunset` as astronomical daily variables. Solution: compute moon phase locally from the date using a standard synodic month formula (29.530588 days).
+
+**3. `self.config` not set by `Star.__init__`** — The AstrBot `Star` base class accepts a `config` parameter but does NOT store it as `self.config`. Each plugin must do this manually: `self.config = config or {}`. Always check sibling plugins for conventions before assuming base class behavior.
