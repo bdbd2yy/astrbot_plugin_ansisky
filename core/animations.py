@@ -26,7 +26,9 @@ STAR_COLOR: tuple[int, int, int] = (210, 215, 235)
 MOON_COLOR: tuple[int, int, int] = (176, 184, 208)
 MOON_FILL_COLOR: tuple[int, int, int] = (31, 31, 47)
 SUN_COLOR: tuple[int, int, int] = (225, 210, 145)
-CLOUD_COLOR: tuple[int, int, int] = (200, 200, 210)
+CLOUD_CLEAR_COLOR: tuple[int, int, int] = (235, 235, 235)
+CLOUD_GREY_COLOR: tuple[int, int, int] = (160, 160, 170)
+CLOUD_DARK_COLOR: tuple[int, int, int] = (90, 90, 100)
 BIRD_COLOR: tuple[int, int, int] = (80, 80, 80)
 RAIN_COLOR: tuple[int, int, int] = (173, 216, 230)
 SNOW_COLOR: tuple[int, int, int] = (255, 250, 250)
@@ -37,12 +39,10 @@ SMOKE_COLOR: tuple[int, int, int] = (180, 180, 180)
 # ── Cloud shapes ─────────────────────────────────────────────────────────────
 
 CLOUD_SHAPES: list[list[str]] = [
-    ["    __   __    ", "  _(  )_(  )_  "],
-    ["   ___  ___   ", "  (   )(   )  "],
-    ["    _____    ", "  _(     )_  "],
-    ["   __  __   ", "  (  )(  )  "],
-    ["  ___  ___  ___  ", " (   )(   )(   ) "],
-    ["   ______   ", " _(      )_ "],
+    ["   .--.   ", " .-(    ). ", "(___.__)_)"],
+    ["      _  _   ", "    ( `   )_ ", "   (    )    `)", "    \\_  (___  )"],
+    ["     .--.    ", "  .-(    ).  ", " (___.__)__) "],
+    ["   _  _   ", "  ( `   )_ ", " (    )   `)", "  `--'      "],
 ]
 
 # ── Particle character sets ──────────────────────────────────────────────────
@@ -251,35 +251,85 @@ class SunSystem(AnimationSystem):
 
 
 class CloudSystem(AnimationSystem):
-    """Drifting multi-line clouds with varied, fluffy shapes.
+    """Drifting clouds matching weathr's cloud assets and motion.
 
-    Cloud count adapts to conditions: 3 clear, 4 partly-cloudy, 5 otherwise.
+    A few clouds are distributed across the sky at startup.  They drift slowly
+    with the same default wind bias as weathr, then respawn from the edge with
+    spacing checks.
     """
 
-    def __init__(self, conditions: Conditions) -> None:
-        if conditions.condition == WeatherCondition.CLEAR:
-            n_clouds = 3
-        elif conditions.condition == WeatherCondition.PARTLY_CLOUDY:
-            n_clouds = 4
-        else:
-            n_clouds = 5
+    BASE_WIND_X: float = 0.15
 
+    def __init__(self, conditions: Conditions) -> None:
+        self._conditions = conditions
+        self._is_clear = conditions.condition == WeatherCondition.CLEAR
+        self._cloud_color = self._color_for_conditions(conditions)
+        self._base_wind_x = self.BASE_WIND_X
         self._clouds: list[dict] = []
-        for _ in range(n_clouds):
-            self._clouds.append({
-                "x": float(random.randint(0, COLS - 1)),
-                "y": random.randint(CLOUD_Y_MIN, CLOUD_Y_MAX),
-                "shape": random.randint(0, len(CLOUD_SHAPES) - 1),
-                "speed": random.uniform(0.3, 0.7),
-            })
+
+        count = max(1, COLS // 30)
+        segment = COLS / count
+        for idx in range(count):
+            x_min = int(idx * segment)
+            x_max = int((idx + 1) * segment)
+            x = float(random.randint(x_min, min(x_max, COLS - 1)))
+            self._clouds.append(self._create_random_cloud(x))
+
+    def is_active(self, conditions: Conditions) -> bool:
+        return conditions.is_cloudy or conditions.condition == WeatherCondition.CLEAR
+
+    def _color_for_conditions(self, conditions: Conditions) -> tuple[int, int, int]:
+        if conditions.condition == WeatherCondition.CLEAR:
+            return CLOUD_CLEAR_COLOR
+        if conditions.condition == WeatherCondition.PARTLY_CLOUDY:
+            return CLOUD_GREY_COLOR
+        return CLOUD_DARK_COLOR
+
+    def _create_random_cloud(self, x: float) -> dict:
+        return {
+            "x": x,
+            "y": float(random.randrange(max(1, ROWS // 3))),
+            "shape": random.randrange(len(CLOUD_SHAPES)),
+            "speed": 0.02 + random.random() * 0.03,
+            "wind_x": self._base_wind_x * (0.8 + random.random() * 0.4),
+        }
+
+    def _cloud_width(self, cloud: dict) -> int:
+        shape = CLOUD_SHAPES[cloud["shape"]]
+        return max(len(line) for line in shape)
 
     def step(self) -> None:
         for cloud in self._clouds:
-            cloud["x"] -= cloud["speed"]
-            if cloud["x"] < -20:
-                cloud["x"] = float(COLS)
-                cloud["y"] = random.randint(CLOUD_Y_MIN, CLOUD_Y_MAX)
-                cloud["shape"] = random.randint(0, len(CLOUD_SHAPES) - 1)
+            cloud["x"] += cloud["speed"] + cloud["wind_x"]
+
+        self._clouds = [
+            cloud for cloud in self._clouds
+            if self._is_visible_after_drift(cloud)
+        ]
+
+        max_clouds = max(1, COLS // 30) if self._is_clear else max(1, COLS // 20)
+        spawn_chance = 0.002 if self._is_clear else 0.005
+        if len(self._clouds) < max_clouds and random.random() < spawn_chance:
+            cloud = self._create_random_cloud(0.0)
+            cloud_width = self._cloud_width(cloud)
+            drift_x = cloud["speed"] + cloud["wind_x"]
+            spawn_from_left = drift_x >= 0.0
+            min_gap = max(COLS / 8.0, 15.0)
+            too_close = (
+                any(c["x"] < min_gap for c in self._clouds)
+                if spawn_from_left
+                else any(c["x"] > COLS - min_gap for c in self._clouds)
+            )
+            if not too_close:
+                cloud["x"] = -float(cloud_width) if spawn_from_left else float(COLS)
+                self._clouds.append(cloud)
+
+    def _is_visible_after_drift(self, cloud: dict) -> bool:
+        cloud_width = self._cloud_width(cloud)
+        drift_x = cloud["speed"] + cloud["wind_x"]
+        if drift_x >= 0.0:
+            return cloud["x"] < COLS
+        return cloud["x"] + cloud_width > 0.0
 
     def render(
         self,
@@ -288,13 +338,13 @@ class CloudSystem(AnimationSystem):
         for cloud in self._clouds:
             shape = CLOUD_SHAPES[cloud["shape"]]
             cx = int(cloud["x"])
-            cy = cloud["y"]
+            cy = int(cloud["y"])
             for row_offset, line in enumerate(shape):
                 for col_offset, ch in enumerate(line):
                     x = cx + col_offset
                     y = cy + row_offset
                     if _in_bounds(x, y) and ch != " ":
-                        grid[y][x] = (ch, CLOUD_COLOR)
+                        grid[y][x] = (ch, self._cloud_color)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
