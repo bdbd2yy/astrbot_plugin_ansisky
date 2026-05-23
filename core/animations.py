@@ -1,10 +1,10 @@
 """Animation systems for ANSI Sky weather plugin.
 
-Provides 10 particle/effect systems and an AnimationController that orchestrates
+Provides particle/effect systems and an AnimationController that orchestrates
 them based on weather conditions, time of day, and moon phase.
 
 Grid convention: cells are (char, (r,g,b)) tuples accessed as grid[y][x].
-Dimensions: 80 columns x 30 rows. Ground level is at row 24.
+Dimensions: 114 columns x 45 rows. Ground level is at row 38.
 """
 
 from __future__ import annotations
@@ -14,15 +14,18 @@ from typing import Optional
 
 from .weather_codes import Conditions, WeatherCondition
 
-# ---- grid dimensions ----
-COLS: int = 100
-ROWS: int = 36
-Y_GROUND: int = 28
+# ── Grid dimensions ──────────────────────────────────────────────────────────
 
-# ---- colour palette ----
-STAR_COLOR: tuple[int, int, int] = (255, 255, 200)
-MOON_COLOR: tuple[int, int, int] = (255, 255, 180)
-SUN_COLOR: tuple[int, int, int] = (255, 200, 50)
+COLS: int = 114
+ROWS: int = 45
+Y_GROUND: int = 38
+
+# ── Colour palette ───────────────────────────────────────────────────────────
+
+STAR_COLOR: tuple[int, int, int] = (210, 215, 235)
+MOON_COLOR: tuple[int, int, int] = (176, 184, 208)
+MOON_FILL_COLOR: tuple[int, int, int] = (31, 31, 47)
+SUN_COLOR: tuple[int, int, int] = (225, 210, 145)
 CLOUD_COLOR: tuple[int, int, int] = (200, 200, 210)
 BIRD_COLOR: tuple[int, int, int] = (80, 80, 80)
 RAIN_COLOR: tuple[int, int, int] = (173, 216, 230)
@@ -31,33 +34,61 @@ LIGHTNING_COLOR: tuple[int, int, int] = (255, 255, 100)
 FOG_COLOR: tuple[int, int, int] = (200, 200, 200)
 SMOKE_COLOR: tuple[int, int, int] = (180, 180, 180)
 
-# ---- reusable shape data ----
+# ── Cloud shapes ─────────────────────────────────────────────────────────────
 
 CLOUD_SHAPES: list[list[str]] = [
-    ["   __   __   ", " _(  )_(  )_ "],
-    ["  ___  ___  ", " (   )(   ) "],
-    ["   _____   ", " _(     )_ "],
-    ["  __  __  ", " (  )(  ) "],
+    ["    __   __    ", "  _(  )_(  )_  "],
+    ["   ___  ___   ", "  (   )(   )  "],
+    ["    _____    ", "  _(     )_  "],
+    ["   __  __   ", "  (  )(  )  "],
+    ["  ___  ___  ___  ", " (   )(   )(   ) "],
+    ["   ______   ", " _(      )_ "],
 ]
 
-# Moon phase strings: phase 0.0 = new moon "(   )", 0.5 = full moon "()"
-MOON_PHASE_STRINGS: list[str] = [
-    "(   )",  # 0.000 - 0.125
-    "(  )",   # 0.125 - 0.250
-    "( )",    # 0.250 - 0.375
-    "()",     # 0.375 - 0.500
-    "()",     # 0.500 - 0.625
-    "( )",    # 0.625 - 0.750
-    "(  )",   # 0.750 - 0.875
-    "(   )",  # 0.875 - 1.000
-]
+# ── Particle character sets ──────────────────────────────────────────────────
 
-RAIN_CHARS: list[str] = ["|", "\\", "/"]
-SNOW_CHARS: list[str] = ["*", "."]
+RAIN_CHARS: list[str] = ["|", "|", "|", "|", "|", "│", "╎", "╏"]
+SNOW_CHARS: list[str] = ["*", ".", "+", "·", "*", "."]
 BIRD_CHARS: list[str] = ["v", "^"]
-SMOKE_CHARS: list[str] = ["@", "O", "o", "."]
+STAR_CHARSET: list[str] = [".", "·", "*", "·", "."]
+FOG_CHARS: list[str] = ["~", "~", "~", "≈", "∽", "░"]
 
-# ---- base class ----
+# ── Position ranges ──────────────────────────────────────────────────────────
+
+CLOUD_Y_MIN: int = 3
+CLOUD_Y_MAX: int = 25
+BIRD_Y_MIN: int = 5
+BIRD_Y_MAX: int = 30
+FOG_Y_MIN: int = 8
+FOG_Y_MAX: int = 30
+STAR_Y_MIN: int = 1
+STAR_Y_MAX: int = 28
+
+# ── Lightning range ──────────────────────────────────────────────────────────
+
+LIGHTNING_X_MIN: int = 30
+LIGHTNING_X_MAX: int = 85
+
+# ── Chimney position ─────────────────────────────────────────────────────────
+
+CHIMNEY_X: int = 37
+CHIMNEY_Y: int = 28
+
+# ── Particle counts ──────────────────────────────────────────────────────────
+
+RAIN_COUNTS: dict[str, int] = {"light": 35, "moderate": 70, "heavy": 105}
+SNOW_COUNTS: dict[str, int] = {"light": 35, "medium": 50, "heavy": 85}
+
+
+# ── Helper ───────────────────────────────────────────────────────────────────
+
+def _in_bounds(x: int, y: int) -> bool:
+    return 0 <= x < COLS and 0 <= y < ROWS
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Base class
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class AnimationSystem:
@@ -82,34 +113,28 @@ class AnimationSystem:
         pass
 
 
-# ---- helper ----
-
-def _in_bounds(x: int, y: int) -> bool:
-    return 0 <= x < COLS and 0 <= y < ROWS
-
-
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
 # 1. StarSystem
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class StarSystem(AnimationSystem):
-    """80 twinkling stars in the upper sky (rows 1-20).
+    """100 twinkling stars in the upper sky (rows STAR_Y_MIN to STAR_Y_MAX).
 
     Always active; the controller adds it only at night.
     """
 
     def __init__(self) -> None:
         self._stars: list[dict] = []
-        for _ in range(80):
+        for _ in range(100):
             self._stars.append({
                 "x": random.randint(0, COLS - 1),
-                "y": random.randint(1, 20),
+                "y": random.randint(STAR_Y_MIN, STAR_Y_MAX),
                 "bright": random.choice([True, False]),
             })
 
     def step(self) -> None:
-        # twinkle ~10 % of stars each frame
+        # twinkle ~10% of stars each frame
         n_twinkle = max(1, len(self._stars) // 10)
         for _ in range(n_twinkle):
             star = random.choice(self._stars)
@@ -126,92 +151,107 @@ class StarSystem(AnimationSystem):
                 grid[y][x] = (ch, STAR_COLOR)
 
 
-# ================================================================
-# 2. MoonSystem
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
+# 2. MoonSystem — weathr full moon
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class MoonSystem(AnimationSystem):
-    """Moon at (65, 3) with 8 ASCII phase variants.
+    """Static full moon using weathr's phase_4 ASCII art."""
 
-    Always active; the controller adds it only at night.
-    """
+    MOON_X: int = 84
+    MOON_Y: int = 10
 
-    MOON_X: int = 82
-    MOON_Y: int = 3
+    _MOON_ART: tuple[str, ...] = (
+        "       _..._      ",
+        "     .'~o~~~`.    ",
+        "    :~~~~~o~~~:   ",
+        "    :~~o~~~~.~:   ",
+        "    `.~~~~~o~.'   ",
+        "      `-...-'     ",
+    )
 
     def __init__(self, moon_phase: float = 0.5) -> None:
         self.moon_phase: float = moon_phase
 
     def step(self) -> None:
-        pass  # position fixed
-
-    def _phase_string(self) -> str:
-        idx = min(int(self.moon_phase * 8), 7)
-        return MOON_PHASE_STRINGS[idx]
+        pass  # static — no animation
 
     def render(
         self,
         grid: list[list[tuple[str, tuple[int, int, int]]]],
     ) -> None:
-        phase_str = self._phase_string()
-        y = self.MOON_Y
-        for i, ch in enumerate(phase_str):
-            x = self.MOON_X + i
-            if _in_bounds(x, y):
-                grid[y][x] = (ch, MOON_COLOR)
+        for row_offset, line in enumerate(self._MOON_ART):
+            y = self.MOON_Y + row_offset
+            for col_offset, ch in enumerate(line):
+                x = self.MOON_X + col_offset
+                if not _in_bounds(x, y) or ch == " ":
+                    continue
+                color = MOON_FILL_COLOR if ch == "~" else MOON_COLOR
+                grid[y][x] = (ch, color)
 
 
-# ================================================================
-# 3. SunSystem
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
+# 3. SunSystem — weathr two-frame sun
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class SunSystem(AnimationSystem):
-    """Animated sun at (65, 2-3) with alternating ray frames.
+    """Animated line-art sun from weathr's sun_0/sun_1 assets."""
 
-    Always active; the controller adds it only during the day.
-    """
+    SUN_X: int = 46
+    SUN_Y: int = 3
 
-    SUN_X: int = 82
-
-    # Frame 0 rays (centre at y=3, top row y=2, bottom y=4)
-    _FRAME_0: list[tuple[int, int, str]] = [
-        (81, 2, "\\"), (82, 2, "|"), (83, 2, "/"),
-        (81, 3, "-"), (82, 3, "O"), (83, 3, "-"),
-        (81, 4, "/"), (82, 4, "|"), (83, 4, "\\"),
-    ]
-
-    # Frame 1 rays — mirrored diagonals
-    _FRAME_1: list[tuple[int, int, str]] = [
-        (81, 1, "/"), (82, 1, "|"), (83, 1, "\\"),
-        (81, 2, "-"), (82, 2, "O"), (83, 2, "-"),
-        (81, 3, "\\"), (82, 3, "|"), (83, 3, "/"),
-    ]
+    _FRAMES: tuple[tuple[str, ...], ...] = (
+        (
+            "      ;   :   ;",
+            "   .   \\_,!,_/   ,",
+            "    `.,'     `.,'",
+            "     /         \\",
+            "~ -- :         : -- ~",
+            "     \\         /",
+            "    ,'`._   _.'`.",
+            "   '   / `!` \\   `",
+            "      ;   :   ;",
+        ),
+        (
+            "      .   |   .",
+            "   ;   \\_,|,_/   ;",
+            "    `.,'     `.,'",
+            "     /         \\",
+            "~ -- |         | -- ~",
+            "     \\         /",
+            "    ,'`._   _.'`.",
+            "   ;   / `|` \\   ;",
+            "      .   |   .",
+        ),
+    )
 
     def __init__(self) -> None:
         self._frame: int = 0
 
     def step(self) -> None:
-        self._frame = (self._frame + 1) % 2
+        self._frame = 1 - self._frame
 
     def render(
         self,
         grid: list[list[tuple[str, tuple[int, int, int]]]],
     ) -> None:
-        cells = self._FRAME_1 if self._frame else self._FRAME_0
-        for x, y, ch in cells:
-            if _in_bounds(x, y):
-                grid[y][x] = (ch, SUN_COLOR)
+        for row_offset, line in enumerate(self._FRAMES[self._frame]):
+            y = self.SUN_Y + row_offset
+            for col_offset, ch in enumerate(line):
+                x = self.SUN_X + col_offset
+                if _in_bounds(x, y) and ch != " ":
+                    grid[y][x] = (ch, SUN_COLOR)
 
 
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
 # 4. CloudSystem
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class CloudSystem(AnimationSystem):
-    """Drifting multi-line clouds.
+    """Drifting multi-line clouds with varied, fluffy shapes.
 
     Cloud count adapts to conditions: 3 clear, 4 partly-cloudy, 5 otherwise.
     """
@@ -228,17 +268,17 @@ class CloudSystem(AnimationSystem):
         for _ in range(n_clouds):
             self._clouds.append({
                 "x": float(random.randint(0, COLS - 1)),
-                "y": random.randint(3, 16),
+                "y": random.randint(CLOUD_Y_MIN, CLOUD_Y_MAX),
                 "shape": random.randint(0, len(CLOUD_SHAPES) - 1),
-                "speed": 1.0,
+                "speed": random.uniform(0.3, 0.7),
             })
 
     def step(self) -> None:
         for cloud in self._clouds:
             cloud["x"] -= cloud["speed"]
-            if cloud["x"] < -15:
+            if cloud["x"] < -20:
                 cloud["x"] = float(COLS)
-                cloud["y"] = random.randint(3, 16)
+                cloud["y"] = random.randint(CLOUD_Y_MIN, CLOUD_Y_MAX)
                 cloud["shape"] = random.randint(0, len(CLOUD_SHAPES) - 1)
 
     def render(
@@ -257,9 +297,9 @@ class CloudSystem(AnimationSystem):
                         grid[y][x] = (ch, CLOUD_COLOR)
 
 
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
 # 5. BirdSystem
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class BirdSystem(AnimationSystem):
@@ -274,7 +314,7 @@ class BirdSystem(AnimationSystem):
         for _ in range(n_birds):
             self._birds.append({
                 "x": float(random.randint(0, COLS - 1)),
-                "y": random.randint(5, 22),
+                "y": random.randint(BIRD_Y_MIN, BIRD_Y_MAX),
                 "frame": random.randint(0, 1),
             })
 
@@ -291,7 +331,7 @@ class BirdSystem(AnimationSystem):
             bird["frame"] = 1 - bird["frame"]
             if bird["x"] >= COLS:
                 bird["x"] = -3.0
-                bird["y"] = random.randint(4, 12)
+                bird["y"] = random.randint(BIRD_Y_MIN, BIRD_Y_MAX)
 
     def render(
         self,
@@ -305,20 +345,19 @@ class BirdSystem(AnimationSystem):
                 grid[y][x] = (ch, BIRD_COLOR)
 
 
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
 # 6. RainSystem
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class RainSystem(AnimationSystem):
     """Falling rain streaks at varying intensity.
 
-    Particle count: light=20, moderate=40, heavy=60.
+    Particle count: light=35, moderate=70, heavy=105.
     """
 
     def __init__(self, intensity: str) -> None:
-        intensity_counts = {"light": 30, "moderate": 60, "heavy": 90}
-        self._target: int = intensity_counts.get(intensity, 20)
+        self._target: int = RAIN_COUNTS.get(intensity, 40)
         self._particles: list[dict] = []
 
         # pre-fill initial particles spread across the fall column
@@ -361,20 +400,19 @@ class RainSystem(AnimationSystem):
                 grid[y][x] = (p["char"], RAIN_COLOR)
 
 
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
 # 7. SnowSystem
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class SnowSystem(AnimationSystem):
     """Falling snowflakes with gentle horizontal sway.
 
-    Particle count: light=20, medium=30, heavy=50.
+    Particle count: light=35, medium=50, heavy=85.
     """
 
     def __init__(self, intensity: str) -> None:
-        intensity_counts = {"light": 30, "medium": 45, "heavy": 75}
-        self._target: int = intensity_counts.get(intensity, 20)
+        self._target: int = SNOW_COUNTS.get(intensity, 30)
         self._particles: list[dict] = []
 
         for _ in range(self._target):
@@ -414,9 +452,9 @@ class SnowSystem(AnimationSystem):
                 grid[y][x] = (p["char"], SNOW_COLOR)
 
 
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
 # 8. ThunderstormSystem
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class ThunderstormSystem(AnimationSystem):
@@ -424,6 +462,7 @@ class ThunderstormSystem(AnimationSystem):
 
     Generates 1-3 jagged bolts every 5-12 frames.
     Each flash persists for 2 frames.
+    Bolts span x-range 30-85.
     """
 
     def __init__(self) -> None:
@@ -453,7 +492,7 @@ class ThunderstormSystem(AnimationSystem):
 
     def _generate_bolt(self) -> list[tuple[int, int, str]]:
         segments: list[tuple[int, int, str]] = []
-        x: float = float(random.randint(25, 75))
+        x: float = float(random.randint(LIGHTNING_X_MIN, LIGHTNING_X_MAX))
         y: float = 0.0
 
         while y < Y_GROUND:
@@ -493,13 +532,13 @@ class ThunderstormSystem(AnimationSystem):
                     grid[y][x] = (ch, LIGHTNING_COLOR)
 
 
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
 # 9. FogSystem
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class FogSystem(AnimationSystem):
-    """Slowly drifting fog wisps (`~` clusters).
+    """Slowly drifting fog wisps (rows 8-30).
 
     Active only when conditions indicate fog.
     """
@@ -510,8 +549,9 @@ class FogSystem(AnimationSystem):
         for _ in range(n_wisps):
             self._wisps.append({
                 "x": float(random.randint(0, COLS - 1)),
-                "y": random.randint(8, 22),
-                "width": random.randint(3, 5),
+                "y": random.randint(FOG_Y_MIN, FOG_Y_MAX),
+                "width": random.randint(3, 6),
+                "char": random.choice(FOG_CHARS),
             })
 
     def is_active(self, conditions: Conditions) -> bool:
@@ -522,7 +562,7 @@ class FogSystem(AnimationSystem):
             wisp["x"] -= 0.5
             if wisp["x"] < -6:
                 wisp["x"] = float(COLS)
-                wisp["y"] = random.randint(6, 20)
+                wisp["y"] = random.randint(FOG_Y_MIN, FOG_Y_MAX)
 
     def render(
         self,
@@ -535,57 +575,67 @@ class FogSystem(AnimationSystem):
                 x = wx + i
                 y = wy
                 if _in_bounds(x, y):
-                    grid[y][x] = ("~", FOG_COLOR)
+                    grid[y][x] = (wisp["char"], FOG_COLOR)
 
 
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
 # 10. ChimneySmoke
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class ChimneySmoke(AnimationSystem):
-    """Rising smoke from the house chimney.
+    """Thin smoke wisps rising from the weathr house chimney.
 
-    Particles rise and drift right, fading through @ -> O -> o -> . -> gone.
-    Chimney source is at (58, 12).
+    Matches weathr's single-particle lifecycle: o -> . -> ~ -> ·, with a
+    slow upward rise and subtle horizontal drift.
 
     Active only when it is not raining or storming.
     """
 
-    CHIMNEY_X: int = 48
-    CHIMNEY_Y: int = 16
-    MAX_PARTICLES: int = 15
+    MAX_PARTICLES: int = 24
+    MIN_MAX_AGE: int = 70
+    MAX_AGE_VARIANCE: int = 30
+    SPAWN_RATE: int = 12
+    VERTICAL_SPEED: float = 0.1
+    DRIFT_SCALE: float = 0.08
+    SPAWN_JITTER_X: float = 1.6
 
     def __init__(self) -> None:
-        self._particles: list[dict] = []
+        self._particles: list[dict] = [
+            self._new_particle(age=age, drift=drift)
+            for age, drift in ((4, -0.02), (18, 0.01), (32, -0.01), (50, 0.02))
+        ]
+        self._spawn_timer: int = 0
+
+    def _new_particle(self, age: int = 0, drift: float | None = None) -> dict:
+        if drift is None:
+            drift = (random.random() - 0.5) * self.DRIFT_SCALE
+        return {
+            "x": CHIMNEY_X + (random.random() - 0.5) * self.SPAWN_JITTER_X,
+            "y": float(CHIMNEY_Y) - age * self.VERTICAL_SPEED,
+            "age": age,
+            "max_age": self.MIN_MAX_AGE + random.randrange(self.MAX_AGE_VARIANCE),
+            "drift": drift,
+        }
 
     def is_active(self, conditions: Conditions) -> bool:
         return not conditions.is_raining and not conditions.is_thunderstorm
 
     def step(self) -> None:
-        # move existing particles up and right; age them
         for p in self._particles:
-            p["y"] -= 0.5
-            p["x"] += 0.3
             p["age"] += 1
+            p["y"] -= self.VERTICAL_SPEED
+            p["x"] += p["drift"]
 
-        # cull old or out-of-bounds particles
         self._particles = [
             p for p in self._particles
-            if p["age"] < len(SMOKE_CHARS)
-            and p["y"] >= 0
-            and p["x"] < COLS
+            if p["age"] < p["max_age"] and p["y"] >= 0.0
         ]
 
-        # spawn 1-2 new particles per frame
-        spawn = random.randint(1, 2)
-        for _ in range(spawn):
-            if len(self._particles) < self.MAX_PARTICLES:
-                self._particles.append({
-                    "x": float(self.CHIMNEY_X),
-                    "y": float(self.CHIMNEY_Y),
-                    "age": 0,
-                })
+        self._spawn_timer += 1
+        if self._spawn_timer >= self.SPAWN_RATE and len(self._particles) < self.MAX_PARTICLES:
+            self._spawn_timer = 0
+            self._particles.append(self._new_particle())
 
     def render(
         self,
@@ -594,14 +644,32 @@ class ChimneySmoke(AnimationSystem):
         for p in self._particles:
             x = int(p["x"])
             y = int(p["y"])
-            ch = SMOKE_CHARS[min(p["age"], len(SMOKE_CHARS) - 1)]
-            if _in_bounds(x, y):
-                grid[y][x] = (ch, SMOKE_COLOR)
+            if not _in_bounds(x, y):
+                continue
+
+            age = p["age"]
+            if age <= 6:
+                ch = "o"
+            elif age <= 14:
+                ch = "."
+            elif age <= 25:
+                ch = "~"
+            else:
+                ch = "·"
+
+            life_ratio = age / p["max_age"]
+            if life_ratio < 0.3:
+                color = (235, 235, 235)
+            elif life_ratio < 0.6:
+                color = (160, 160, 170)
+            else:
+                color = (80, 80, 90)
+            grid[y][x] = (ch, color)
 
 
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
 # AnimationController
-# ================================================================
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class AnimationController:
