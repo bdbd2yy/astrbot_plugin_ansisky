@@ -50,3 +50,10 @@ Reworked scene.py to match the visual style of the [weathr](https://github.com/V
 - **House**: Per-character coloring based on row position (roof/window/door/trim/wood) with day/night variants, matching weathr's `WorldSceneStyle`.
 - **Decorations**: Added mailbox (left of tree), 2-row fence (right of house), pine tree art updated to match weathr's `*` chars. Tree trunk chars (`_`, `|`) get distinct trunk color.
 - **Layout**: House at x=6, tree at x=0, mailbox at x=16, fence at x=68 — fits within the 80×30 grid.
+
+### 2026-05-23 — Black background, denser grid, Chinese HUD
+
+- **Black background**: Canvas is uniformly black. Only non-space ASCII characters are drawn (no filled rectangles). This gives a true terminal-screenshot look.
+- **Denser grid**: Increased from 80×30 to 100×36 (3600 cells, +50%). CELL_W=8, CELL_H=15, font size 13. House now properly centered with room for all decorations.
+- **Chinese HUD**: Bottom text shows city, weather condition (Chinese name), temperature, wind direction (compass in Chinese), and wind speed. Added `CONDITION_CN` mapping and `wind_direction_cn()` converter to `weather_codes.py`.
+- **Animation updates**: All particle counts, sky ranges, and positions scaled for the 100×36 grid.
