@@ -4,6 +4,7 @@ from pathlib import Path
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger, AstrBotConfig
+from astrbot.core.star.filter.command import GreedyStr
 
 from .core.weather_api import fetch, WeatherData
 from .core.weather_codes import classify, Conditions, CONDITION_EN
@@ -11,6 +12,32 @@ from .core.scene import build_static_grid, ROWS, overlay_text
 from .core.animations import AnimationController
 from .core.renderer import render_frame
 from .core.gif_composer import save_gif
+
+
+def _parse_args(s: str, default_city: str) -> tuple[str | None, float | None, float | None]:
+    """Parse command args. Returns (city, lat, lon) — one side always set."""
+    s = s.strip()
+    if not s:
+        return default_city, None, None
+
+    parts = s.split()
+
+    if parts[0] == "-l" and len(parts) >= 3:
+        try:
+            lat = float(parts[1])
+            lon = float(parts[2])
+        except ValueError:
+            raise ValueError(f"Invalid coordinates. Usage: -l <lat> <lon>")
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            raise ValueError(f"Coordinates out of range. Lat: -90~90, Lon: -180~180")
+        return None, lat, lon
+
+    if parts[0] == "-c":
+        city = " ".join(parts[1:]) if len(parts) > 1 else default_city
+        return city, None, None
+
+    # No flag: backward compatible, treat as city name
+    return s, None, None
 
 
 @register("astrbot_plugin_ansisky", "bdbd2yy", "ASCII 艺术风格天气动画 GIF 插件", "1.0.0")
@@ -32,15 +59,21 @@ class AnsiSkyPlugin(Star):
         logger.info("AnsiSky plugin terminated")
 
     @filter.command("weather", alias={"天气", "tianqi"})
-    async def weather(self, event: AstrMessageEvent, city: str = ""):
-        city = city.strip()
-        if not city:
-            city = self.config.get("default_city", "Beijing") if self.config else "Beijing"
+    async def weather(self, event: AstrMessageEvent, city: GreedyStr):
+        default_city = (
+            self.config.get("default_city", "Beijing") if self.config else "Beijing"
+        )
 
         try:
-            data: WeatherData = await fetch(self._session, city)
+            city_name, lat, lon = _parse_args(city, default_city)
+        except ValueError as e:
+            yield event.plain_result(f"参数错误: {e}")
+            return
+
+        try:
+            data: WeatherData = await fetch(self._session, city=city_name, lat=lat, lon=lon)
         except Exception as e:
-            logger.error(f"Weather fetch failed for {city!r}: {e}")
+            logger.error(f"Weather fetch failed: {e}")
             yield event.plain_result(f"获取天气失败: {e}")
             return
 
@@ -61,7 +94,7 @@ class AnsiSkyPlugin(Star):
             anim_ctrl.render_all(frame_grid)
             overlay_text(
                 frame_grid,
-                f"City: {data.city} | Weather: {CONDITION_EN[conditions.condition]} | Temp: {data.temperature:.0f}°C | Wind: {data.wind_speed * 3.6:.1f}km/h",
+                f"City: {data.city} | Location: {data.lat:.2f}, {data.lon:.2f} | Weather: {CONDITION_EN[conditions.condition]} | Temp: {data.temperature:.0f}°C | Wind: {data.wind_speed * 3.6:.1f}km/h",
                 2, ROWS - 2, (255, 255, 255),
             )
             frame = render_frame(frame_grid)
@@ -69,7 +102,8 @@ class AnsiSkyPlugin(Star):
 
         data_dir = Path(self.data_dir) if hasattr(self, "data_dir") else Path("/tmp/ansisky")
         data_dir.mkdir(parents=True, exist_ok=True)
-        gif_path = data_dir / f"weather_{data.city}_{int(data.temperature)}.gif"
+        safe_city = data.city.replace(" ", "_").replace(",", "")
+        gif_path = data_dir / f"weather_{safe_city}_{int(data.temperature)}.gif"
         save_gif(frames, gif_path, frame_duration)
 
         yield event.image_result(str(gif_path))
