@@ -6,7 +6,7 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api import logger, AstrBotConfig
 
 from .core.weather_api import fetch, WeatherData
-from .core.weather_codes import classify, Conditions
+from .core.weather_codes import classify, Conditions, CONDITION_CN, wind_direction_cn
 from .core.scene import build_static_grid, ROWS, overlay_text
 from .core.animations import AnimationController
 from .core.renderer import render_frame
@@ -61,7 +61,8 @@ class AnsiSkyPlugin(Star):
             anim_ctrl.render_all(frame_grid)
             overlay_text(
                 frame_grid,
-                f"{data.city}  {data.temperature}°C  {conditions.condition.name}",
+                f"{data.city}  {CONDITION_CN[conditions.condition]}  {data.temperature:.0f}°C  "
+                f"{wind_direction_cn(data.wind_direction)}风{data.wind_speed:.1f}m/s",
                 2, ROWS - 2, (255, 255, 255),
             )
             frame = render_frame(frame_grid)

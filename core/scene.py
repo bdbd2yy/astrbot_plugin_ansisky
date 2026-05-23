@@ -1,9 +1,9 @@
 """Static scene builder for the AnsiSky plugin.
 
-Builds an 80x30 character grid (columns x rows) that serves as the background
+Builds a 100x36 character grid (columns x rows) that serves as the background
 for animated weather overlays.  Each cell is a ``(char, (r, g, b))`` tuple.
 
-Visual style based on the weathr project (github.com/Veirt/weathr).
+Black background — only non-space characters are drawn.  No solid-colour fills.
 """
 
 from __future__ import annotations
@@ -11,12 +11,12 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 # Grid dimensions (must match renderer.py)
 # ---------------------------------------------------------------------------
-COLS = 80
-ROWS = 30
-CELL_W = 10
-CELL_H = 18
+COLS = 100
+ROWS = 36
+CELL_W = 8
+CELL_H = 15
 
-GROUND_HEIGHT = 7
+GROUND_HEIGHT = 8
 
 # ---------------------------------------------------------------------------
 # Embedded ASCII art
@@ -67,24 +67,18 @@ MAILBOX = [
 # ---------------------------------------------------------------------------
 # Colour palette — day
 # ---------------------------------------------------------------------------
-# Sky / atmosphere
-SKY_DAY = (0, 255, 255)       # Cyan
-SKY_NIGHT = (0, 0, 139)       # DarkBlue
-
-# House
-ROOF_DAY = (139, 0, 0)         # DarkRed
-ROOF_NIGHT = (139, 0, 139)     # DarkMagenta
-WOOD_DAY = (210, 180, 140)     # Tan
-WOOD_NIGHT = (100, 70, 50)     # Dark brown
-DOOR_DAY = (139, 69, 19)       # SaddleBrown
+ROOF_DAY = (139, 0, 0)
+ROOF_NIGHT = (139, 0, 139)
+WOOD_DAY = (210, 180, 140)
+WOOD_NIGHT = (100, 70, 50)
+DOOR_DAY = (139, 69, 19)
 DOOR_NIGHT = (80, 40, 10)
-WINDOW_DAY = (0, 255, 255)     # Cyan
-WINDOW_NIGHT = (255, 255, 0)   # Yellow
-TRIM = (105, 105, 105)         # DimGrey
+WINDOW_DAY = (0, 255, 255)
+WINDOW_NIGHT = (255, 255, 0)
+TRIM = (105, 105, 105)
 
-# Ground
-GROUND_DAY = (0, 128, 0)       # Green
-GROUND_NIGHT = (0, 100, 0)     # DarkGreen
+GROUND_DAY = (0, 128, 0)
+GROUND_NIGHT = (0, 100, 0)
 GRASS_SECONDARY_DAY = (0, 100, 0)
 GRASS_SECONDARY_NIGHT = (0, 50, 0)
 SOIL_DAY = (101, 67, 33)
@@ -92,7 +86,6 @@ SOIL_NIGHT = (60, 40, 20)
 FLOWER_COLORS_DAY = ((255, 0, 255), (255, 0, 0), (0, 255, 255), (255, 255, 0))
 FLOWER_COLORS_NIGHT = ((139, 0, 139), (139, 0, 0), (0, 0, 255), (128, 128, 0))
 
-# Decorations
 TREE_FOLIAGE_DAY = (0, 100, 0)
 TREE_FOLIAGE_NIGHT = (0, 50, 0)
 TREE_TRUNK = (101, 67, 33)
@@ -101,16 +94,13 @@ FENCE_NIGHT = (128, 128, 128)
 MAILBOX_DAY = (0, 0, 255)
 MAILBOX_NIGHT = (0, 0, 139)
 
-# Chimney / smoke
 CHIMNEY_COLOR = (120, 60, 30)
 SMOKE_COLOR = (180, 180, 180)
 
-# HUD
-HUD_BG = (30, 30, 30)
 HUD_TEXT = (255, 255, 255)
 
 # ---------------------------------------------------------------------------
-# Per-character colour maps for the embedded art
+# Per-character colour maps
 # ---------------------------------------------------------------------------
 _HOUSE_WINDOW_CHARS = {"[", "]"}
 _HOUSE_DOOR_CHARS = {"(", ")"}
@@ -161,62 +151,60 @@ def _ground_cell(x: int, y: int, is_day: bool) -> tuple[str, tuple[int, int, int
 def build_static_grid(
     is_day: bool,
 ) -> list[list[tuple[str, tuple[int, int, int]]]]:
-    """Build the full 80x30 character grid.
+    """Build the full 100x36 character grid on a black background.
 
     Layering order (back to front):
-    1. Sky fill
-    2. Stars / sun / moon (handled by AnimationController)
-    3. House centred
-    4. Tree left of house
-    5. Mailbox left of tree
-    6. Fence right of house
-    7. Pine tree far right
-    8. Ground rows (bottom GROUND_HEIGHT)
-    9. HUD background (bottom 2 rows)
+    1. House centred
+    2. Tree left
+    3. Mailbox between tree and house
+    4. Fence right of house
+    5. Pine tree far right
+    6. Ground rows (bottom GROUND_HEIGHT)
     """
-    sky = SKY_DAY if is_day else SKY_NIGHT
-
-    # 1. Initialise grid — all sky
+    # All black — spaces are not drawn
     grid: list[list[tuple[str, tuple[int, int, int]]]] = [
-        [(" ", sky) for _ in range(COLS)] for _ in range(ROWS)
+        [(" ", (0, 0, 0)) for _ in range(COLS)] for _ in range(ROWS)
     ]
 
     ground_y = ROWS - GROUND_HEIGHT
 
-    # 2. House — positioned so visible area fits with room for decorations
-    house_x = 6
+    # 1. House — centred
+    house_x = (COLS - HOUSE_WIDTH) // 2
     house_y = ground_y - HOUSE_HEIGHT
     _overlay_house(grid, house_x, house_y, is_day)
 
-    # 3. Tree — left edge, overlaps with house whitespace harmlessly
-    tree_x = 0
+    # 2. Tree — left of house
+    tree_x = 2
     tree_y = ground_y - len(TREE)
     overlay_art(grid, TREE, tree_x, tree_y,
                 TREE_FOLIAGE_DAY if is_day else TREE_FOLIAGE_NIGHT,
                 trunk_color=TREE_TRUNK)
 
-    # 4. Mailbox — between tree and house visible area
-    mailbox_x = 16
+    # 3. Mailbox — between tree and house
+    mailbox_x = tree_x + len(TREE[0]) + 3
     mailbox_y = ground_y - len(MAILBOX)
     overlay_art(grid, MAILBOX, mailbox_x, mailbox_y,
                 MAILBOX_DAY if is_day else MAILBOX_NIGHT)
 
-    # 5. Fence — right of house
-    fence_x = 68
+    # 4. Fence — right of house
+    fence_x = house_x + HOUSE_WIDTH + 3
     fence_y = ground_y - len(FENCE)
     overlay_art(grid, FENCE, fence_x, fence_y,
                 FENCE_DAY if is_day else FENCE_NIGHT)
 
-    # 7. Ground (bottom GROUND_HEIGHT rows)
+    # 5. Pine tree — far right
+    pine_x = fence_x + len(FENCE[0]) + 3
+    if pine_x + len(PINE_TREE[0]) <= COLS:
+        pine_y = ground_y - len(PINE_TREE)
+        overlay_art(grid, PINE_TREE, pine_x, pine_y,
+                    TREE_FOLIAGE_DAY if is_day else TREE_FOLIAGE_NIGHT,
+                    trunk_color=TREE_TRUNK)
+
+    # 6. Ground (bottom GROUND_HEIGHT rows)
     for row_offset in range(GROUND_HEIGHT):
         gy = ground_y + row_offset
         for col_idx in range(COLS):
             grid[gy][col_idx] = _ground_cell(col_idx, row_offset, is_day)
-
-    # 8. HUD background (bottom 2 rows)
-    for row_idx in range(ROWS - 2, ROWS):
-        for col_idx in range(COLS):
-            grid[row_idx][col_idx] = (" ", HUD_BG)
 
     return grid
 
@@ -282,7 +270,7 @@ def _overlay_house(
     y: int,
     is_day: bool,
 ) -> None:
-    """Render the house with per-character coloring matching weathr's style."""
+    """Render the house with per-character coloring."""
     roof = ROOF_DAY if is_day else ROOF_NIGHT
     wood = WOOD_DAY if is_day else WOOD_NIGHT
     door_c = DOOR_DAY if is_day else DOOR_NIGHT
@@ -300,7 +288,6 @@ def _overlay_house(
                 continue
 
             if row_idx <= 4:
-                # roof rows (0-4)
                 color = roof
             elif ch in _HOUSE_WINDOW_CHARS:
                 color = window
@@ -308,11 +295,7 @@ def _overlay_house(
                 color = door_c
             elif ch in _HOUSE_TRIM_CHARS:
                 color = TRIM
-            elif ch == "=":
-                # ground-level trim
-                color = TRIM
             elif ch == "^":
-                # grass row under house
                 color = GROUND_DAY if is_day else GROUND_NIGHT
             else:
                 color = wood

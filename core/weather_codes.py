@@ -18,6 +18,30 @@ class WeatherCondition(Enum):
     THUNDERSTORM_HAIL = auto()
 
 
+CONDITION_CN: dict[WeatherCondition, str] = {
+    WeatherCondition.CLEAR: "晴",
+    WeatherCondition.PARTLY_CLOUDY: "多云",
+    WeatherCondition.OVERCAST: "阴",
+    WeatherCondition.FOG: "雾",
+    WeatherCondition.DRIZZLE: "毛毛雨",
+    WeatherCondition.FREEZING_RAIN: "冻雨",
+    WeatherCondition.RAIN: "雨",
+    WeatherCondition.SNOW: "雪",
+    WeatherCondition.SNOW_GRAINS: "雪粒",
+    WeatherCondition.RAIN_SHOWERS: "阵雨",
+    WeatherCondition.SNOW_SHOWERS: "阵雪",
+    WeatherCondition.THUNDERSTORM: "雷暴",
+    WeatherCondition.THUNDERSTORM_HAIL: "雷暴冰雹",
+}
+
+
+def wind_direction_cn(degrees: int) -> str:
+    """Convert wind direction in degrees to Chinese compass name."""
+    dirs = ["北", "东北", "东", "东南", "南", "西南", "西", "西北"]
+    idx = round(degrees / 45) % 8
+    return dirs[idx]
+
+
 @dataclass
 class Conditions:
     condition: WeatherCondition

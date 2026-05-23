@@ -1,12 +1,12 @@
 from PIL import Image, ImageDraw, ImageFont
 
-CELL_W = 10
-CELL_H = 18
-CANVAS_W = 80 * CELL_W   # 800
-CANVAS_H = 30 * CELL_H   # 540
+CELL_W = 8
+CELL_H = 15
+CANVAS_W = 100 * CELL_W   # 800
+CANVAS_H = 36 * CELL_H    # 540
 
 
-def load_font(size: int = 16) -> ImageFont.FreeTypeFont:
+def load_font(size: int = 13) -> ImageFont.FreeTypeFont:
     """Load a monospace font, trying common paths. Falls back to default."""
     font_paths = [
         "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
@@ -25,10 +25,11 @@ def load_font(size: int = 16) -> ImageFont.FreeTypeFont:
 def render_frame(grid: list[list[tuple[str, tuple[int, int, int]]]]) -> Image.Image:
     """Render a single frame from a character+color grid.
 
-    Each cell is (char, (r, g, b)) or (char, color_tuple).
-    Returns an RGB PIL Image sized CANVAS_W × CANVAS_H.
+    Each cell is (char, (r, g, b)).  Only non-space characters are drawn;
+    spaces leave the black canvas background showing through.
+    Returns an RGB PIL Image sized CANVAS_W x CANVAS_H.
     """
-    font = load_font(14)
+    font = load_font(13)
     img = Image.new("RGB", (CANVAS_W, CANVAS_H), (0, 0, 0))
     draw = ImageDraw.Draw(img)
 
@@ -37,13 +38,7 @@ def render_frame(grid: list[list[tuple[str, tuple[int, int, int]]]]) -> Image.Im
         for col_idx, cell in enumerate(row):
             x = col_idx * CELL_W
             char, color = cell
-            if char == " ":
-                # Draw background rect for spaces (sky/ground fill)
-                draw.rectangle(
-                    [x, y, x + CELL_W - 1, y + CELL_H - 1],
-                    fill=color,
-                )
-            else:
+            if char != " ":
                 draw.text((x, y - 2), char, font=font, fill=color)
 
     return img

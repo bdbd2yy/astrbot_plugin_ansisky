@@ -15,9 +15,9 @@ from typing import Optional
 from .weather_codes import Conditions, WeatherCondition
 
 # ---- grid dimensions ----
-COLS: int = 80
-ROWS: int = 30
-Y_GROUND: int = 24
+COLS: int = 100
+ROWS: int = 36
+Y_GROUND: int = 28
 
 # ---- colour palette ----
 STAR_COLOR: tuple[int, int, int] = (255, 255, 200)
@@ -94,17 +94,17 @@ def _in_bounds(x: int, y: int) -> bool:
 
 
 class StarSystem(AnimationSystem):
-    """50 twinkling stars in the upper sky (rows 1-12).
+    """80 twinkling stars in the upper sky (rows 1-20).
 
     Always active; the controller adds it only at night.
     """
 
     def __init__(self) -> None:
         self._stars: list[dict] = []
-        for _ in range(50):
+        for _ in range(80):
             self._stars.append({
                 "x": random.randint(0, COLS - 1),
-                "y": random.randint(1, 12),
+                "y": random.randint(1, 20),
                 "bright": random.choice([True, False]),
             })
 
@@ -137,7 +137,7 @@ class MoonSystem(AnimationSystem):
     Always active; the controller adds it only at night.
     """
 
-    MOON_X: int = 65
+    MOON_X: int = 82
     MOON_Y: int = 3
 
     def __init__(self, moon_phase: float = 0.5) -> None:
@@ -173,26 +173,20 @@ class SunSystem(AnimationSystem):
     Always active; the controller adds it only during the day.
     """
 
-    SUN_X: int = 65
+    SUN_X: int = 82
 
     # Frame 0 rays (centre at y=3, top row y=2, bottom y=4)
     _FRAME_0: list[tuple[int, int, str]] = [
-        # top row (y=2)
-        (64, 2, "\\"), (65, 2, "|"), (66, 2, "/"),
-        # middle row (y=3) — centre
-        (64, 3, "-"), (65, 3, "O"), (66, 3, "-"),
-        # bottom row (y=4)
-        (64, 4, "/"), (65, 4, "|"), (66, 4, "\\"),
+        (81, 2, "\\"), (82, 2, "|"), (83, 2, "/"),
+        (81, 3, "-"), (82, 3, "O"), (83, 3, "-"),
+        (81, 4, "/"), (82, 4, "|"), (83, 4, "\\"),
     ]
 
-    # Frame 1 rays — mirrored diagonals (centre at y=2, wiggle up)
+    # Frame 1 rays — mirrored diagonals
     _FRAME_1: list[tuple[int, int, str]] = [
-        # top row (y=1)
-        (64, 1, "/"), (65, 1, "|"), (66, 1, "\\"),
-        # middle row (y=2) — centre
-        (64, 2, "-"), (65, 2, "O"), (66, 2, "-"),
-        # bottom row (y=3)
-        (64, 3, "\\"), (65, 3, "|"), (66, 3, "/"),
+        (81, 1, "/"), (82, 1, "|"), (83, 1, "\\"),
+        (81, 2, "-"), (82, 2, "O"), (83, 2, "-"),
+        (81, 3, "\\"), (82, 3, "|"), (83, 3, "/"),
     ]
 
     def __init__(self) -> None:
@@ -234,7 +228,7 @@ class CloudSystem(AnimationSystem):
         for _ in range(n_clouds):
             self._clouds.append({
                 "x": float(random.randint(0, COLS - 1)),
-                "y": random.randint(2, 8),
+                "y": random.randint(3, 16),
                 "shape": random.randint(0, len(CLOUD_SHAPES) - 1),
                 "speed": 1.0,
             })
@@ -244,7 +238,7 @@ class CloudSystem(AnimationSystem):
             cloud["x"] -= cloud["speed"]
             if cloud["x"] < -15:
                 cloud["x"] = float(COLS)
-                cloud["y"] = random.randint(2, 8)
+                cloud["y"] = random.randint(3, 16)
                 cloud["shape"] = random.randint(0, len(CLOUD_SHAPES) - 1)
 
     def render(
@@ -280,7 +274,7 @@ class BirdSystem(AnimationSystem):
         for _ in range(n_birds):
             self._birds.append({
                 "x": float(random.randint(0, COLS - 1)),
-                "y": random.randint(4, 12),
+                "y": random.randint(5, 22),
                 "frame": random.randint(0, 1),
             })
 
@@ -323,7 +317,7 @@ class RainSystem(AnimationSystem):
     """
 
     def __init__(self, intensity: str) -> None:
-        intensity_counts = {"light": 20, "moderate": 40, "heavy": 60}
+        intensity_counts = {"light": 30, "moderate": 60, "heavy": 90}
         self._target: int = intensity_counts.get(intensity, 20)
         self._particles: list[dict] = []
 
@@ -379,7 +373,7 @@ class SnowSystem(AnimationSystem):
     """
 
     def __init__(self, intensity: str) -> None:
-        intensity_counts = {"light": 20, "medium": 30, "heavy": 50}
+        intensity_counts = {"light": 30, "medium": 45, "heavy": 75}
         self._target: int = intensity_counts.get(intensity, 20)
         self._particles: list[dict] = []
 
@@ -459,7 +453,7 @@ class ThunderstormSystem(AnimationSystem):
 
     def _generate_bolt(self) -> list[tuple[int, int, str]]:
         segments: list[tuple[int, int, str]] = []
-        x: float = float(random.randint(20, 60))
+        x: float = float(random.randint(25, 75))
         y: float = 0.0
 
         while y < Y_GROUND:
@@ -516,7 +510,7 @@ class FogSystem(AnimationSystem):
         for _ in range(n_wisps):
             self._wisps.append({
                 "x": float(random.randint(0, COLS - 1)),
-                "y": random.randint(6, 20),
+                "y": random.randint(8, 22),
                 "width": random.randint(3, 5),
             })
 
@@ -558,8 +552,8 @@ class ChimneySmoke(AnimationSystem):
     Active only when it is not raining or storming.
     """
 
-    CHIMNEY_X: int = 58
-    CHIMNEY_Y: int = 12
+    CHIMNEY_X: int = 48
+    CHIMNEY_Y: int = 16
     MAX_PARTICLES: int = 15
 
     def __init__(self) -> None:
