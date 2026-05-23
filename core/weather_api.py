@@ -1,3 +1,4 @@
+import datetime as dt
 from dataclasses import dataclass
 from typing import Optional
 from urllib.parse import quote
@@ -19,8 +20,15 @@ class WeatherData:
     moon_phase: float
 
 
+def _compute_moon_phase() -> float:
+    """Return moon phase 0.0–1.0 (0=new, 0.5=full) for today."""
+    known_new = dt.date(2000, 1, 6)
+    days = (dt.date.today() - known_new).days
+    return (days % 29.530588) / 29.530588
+
+
 async def fetch(session: aiohttp.ClientSession, city: str) -> WeatherData:
-    """Fetch weather for a city via 2-step: Nominatim geocoding → Open-Meteo forecast."""
+    """Fetch weather for a city via Open-Meteo geocoding and forecast APIs."""
     encoded = quote(city)
 
     # Step 1: geocode city name → lat/lon via Open-Meteo Geocoding API
@@ -45,7 +53,7 @@ async def fetch(session: aiohttp.ClientSession, city: str) -> WeatherData:
         f"?latitude={lat}&longitude={lon}"
         f"&current=weather_code,temperature_2m,relative_humidity_2m,"
         f"wind_speed_10m,wind_direction_10m,is_day"
-        f"&daily=sunrise,sunset,moon_phase"
+        f"&daily=sunrise,sunset"
         f"&timezone=auto"
     )
     async with session.get(weather_url) as resp:
@@ -65,5 +73,5 @@ async def fetch(session: aiohttp.ClientSession, city: str) -> WeatherData:
         is_day=bool(current.get("is_day", 1)),
         sunrise=daily.get("sunrise", [None])[0] if daily.get("sunrise") else None,
         sunset=daily.get("sunset", [None])[0] if daily.get("sunset") else None,
-        moon_phase=float(daily.get("moon_phase", [0.5])[0]) if daily.get("moon_phase") else 0.5,
+        moon_phase=_compute_moon_phase(),
     )
