@@ -86,6 +86,20 @@ def _in_bounds(x: int, y: int) -> bool:
     return 0 <= x < COLS and 0 <= y < ROWS
 
 
+def _visible_span(line: str) -> tuple[int, int] | None:
+    first: int | None = None
+    last: int | None = None
+    for idx, ch in enumerate(line):
+        if ch == " ":
+            continue
+        if first is None:
+            first = idx
+        last = idx
+    if first is None or last is None:
+        return None
+    return first, last
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Base class
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -335,16 +349,25 @@ class CloudSystem(AnimationSystem):
         self,
         grid: list[list[tuple[str, tuple[int, int, int]]]],
     ) -> None:
+        sky_background = grid[0][0][1] if grid and grid[0] else CLOUD_CLEAR_COLOR
         for cloud in self._clouds:
             shape = CLOUD_SHAPES[cloud["shape"]]
             cx = int(cloud["x"])
             cy = int(cloud["y"])
             for row_offset, line in enumerate(shape):
+                visible_span = _visible_span(line)
+                if visible_span is None:
+                    continue
+                first_visible, last_visible = visible_span
                 for col_offset, ch in enumerate(line):
                     x = cx + col_offset
                     y = cy + row_offset
-                    if _in_bounds(x, y) and ch != " ":
+                    if not _in_bounds(x, y):
+                        continue
+                    if ch != " ":
                         grid[y][x] = (ch, self._cloud_color)
+                    elif first_visible <= col_offset <= last_visible:
+                        grid[y][x] = (" ", sky_background)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -757,9 +780,6 @@ class AnimationController:
         self._conditions = conditions
         self.systems = []
 
-        # ---- always present ----
-        self.systems.append(CloudSystem(conditions))
-
         # ---- day / night exclusives ----
         if is_day:
             self.systems.append(SunSystem())
@@ -772,6 +792,11 @@ class AnimationController:
         else:
             self.systems.append(StarSystem())
             self.systems.append(MoonSystem(moon_phase))
+
+        # ---- sky foreground ----
+        # Clouds are rendered after sun/moon/stars so their solid silhouette
+        # masks whichever celestial object they drift across.
+        self.systems.append(CloudSystem(conditions))
 
         # ---- weather-specific ----
         if conditions.is_raining:
